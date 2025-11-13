@@ -2,117 +2,147 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = "express-ci-demo"
+        APP_NAME = "express-demo-app"
         APP_PORT = "3000"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Build') {
             steps {
-                echo '=== Stage: Checkout ==='
-                // Working with files already in workspace
-                sh 'pwd && ls -la'
-                echo 'Source code verified'
+                echo '========== BUILD STAGE =========='
+                dir('app') {
+                    sh '''
+                        echo "Installing dependencies..."
+                        npm install
+                        echo "✓ Build completed successfully"
+                    '''
+                }
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Test') {
             steps {
-                echo '=== Stage: Install Dependencies ==='
-                sh '''
-                  echo "Installing npm dependencies..."
-                  npm install
-                  echo "Dependencies installed successfully"
-                '''
+                echo '========== TEST STAGE =========='
+                dir('app') {
+                    sh '''
+                        echo "Running unit tests..."
+                        npm test
+                        echo "✓ All tests passed"
+                    '''
+                }
             }
         }
 
-        stage('Unit Tests') {
+        stage('Package') {
             steps {
-                echo '=== Stage: Unit Tests ==='
+                echo '========== PACKAGE STAGE =========='
                 sh '''
-                  echo "Running unit tests..."
-                  npm test
-                  echo "All tests passed successfully!"
-                '''
-            }
-        }
-
-        stage('Build Application') {
-            steps {
-                echo '=== Stage: Build Application ==='
-                sh '''
-                  echo "Application is ready for deployment"
-                  echo "Build completed successfully"
+                    echo "Building Docker image..."
+                    docker build -t ${APP_NAME}:${BUILD_NUMBER} ./app
+                    docker tag ${APP_NAME}:${BUILD_NUMBER} ${APP_NAME}:latest
+                    echo "✓ Docker image built successfully"
+                    docker images | grep ${APP_NAME}
                 '''
             }
         }
 
         stage('Deploy') {
             steps {
-                echo '=== Stage: Deploy ==='
+                echo '========== DEPLOY STAGE =========='
                 sh '''
-                  echo "Starting application..."
-                  # Kill any existing process on port 3000
-                  pkill -f "node app.js" || true
-                  # Start app in background
-                  nohup npm start > app.log 2>&1 &
-                  echo $! > app.pid
-                  sleep 3
-                  echo "Application deployed"
+                    echo "Stopping existing container..."
+                    docker stop ${APP_NAME} || true
+                    docker rm ${APP_NAME} || true
+                    
+                    echo "Deploying new container..."
+                    docker run -d \
+                        --name ${APP_NAME} \
+                        --network jenkins-demo_ci-network \
+                        -p ${APP_PORT}:${APP_PORT} \
+                        ${APP_NAME}:latest
+                    
+                    echo "Waiting for application to start..."
+                    sleep 5
+                    
+                    echo "✓ Application deployed successfully"
+                    docker ps | grep ${APP_NAME}
                 '''
             }
         }
 
-        stage('Health Check') {
+        stage('Health-Check') {
             steps {
-                echo '=== Stage: Health Check ==='
+                echo '========== HEALTH-CHECK STAGE =========='
                 script {
                     def retries = 10
                     def success = false
+                    
                     for (int i = 0; i < retries; i++) {
                         try {
-                            sh 'curl -sf http://localhost:3000/health'
-                            echo "✓ Health check passed!"
+                            sh """
+                                curl -f http://localhost:${APP_PORT}/health
+                            """
+                            echo "✓ Health check PASSED"
+                            
+                            // Get the health response
+                            def healthResponse = sh(
+                                script: "curl -s http://localhost:${APP_PORT}/health",
+                                returnStdout: true
+                            ).trim()
+                            echo "Health Response: ${healthResponse}"
+                            
+                            // Test main endpoint
+                            def mainResponse = sh(
+                                script: "curl -s http://localhost:${APP_PORT}/",
+                                returnStdout: true
+                            ).trim()
+                            echo "Main Endpoint: ${mainResponse}"
+                            
                             success = true
                             break
                         } catch (Exception e) {
-                            echo "Health check attempt ${i+1} failed, retrying..."
-                            sleep 2
+                            echo "Health check attempt ${i+1}/${retries} failed, retrying..."
+                            sleep 3
                         }
                     }
+                    
                     if (!success) {
-                        error "Health check failed after ${retries} attempts"
+                        error "❌ Health check FAILED after ${retries} attempts"
                     }
                 }
-            }
-        }
-
-        stage('Display Status') {
-            steps {
-                echo '=== Application Status ==='
-                sh '''
-                  echo "====================================="
-                  echo "DEPLOYMENT SUCCESS"
-                  echo "====================================="
-                  echo "Application: ${APP_NAME}"
-                  echo "Port: ${APP_PORT}"
-                  echo "URL: http://localhost:${APP_PORT}"
-                  echo "Health: http://localhost:${APP_PORT}/health"
-                  echo "====================================="
-                '''
             }
         }
     }
 
     post {
         success {
-            echo '=== PIPELINE SUCCESS ==='
-            echo "Application running at: http://localhost:${APP_PORT}"
+            echo '''
+            ═══════════════════════════════════════
+            ✓✓✓ PIPELINE SUCCESS ✓✓✓
+            ═══════════════════════════════════════
+            All stages completed successfully!
+            
+            Application Details:
+            - Name: express-demo-app
+            - URL: http://localhost:3000
+            - Health: http://localhost:3000/health
+            - Status: HEALTHY ✓
+            ═══════════════════════════════════════
+            '''
         }
         failure {
-            echo '=== PIPELINE FAILURE ==='
-            sh 'cat app.log || true'
+            echo '''
+            ═══════════════════════════════════════
+            ✗✗✗ PIPELINE FAILED ✗✗✗
+            ═══════════════════════════════════════
+            '''
+            sh '''
+                echo "Container logs:"
+                docker logs ${APP_NAME} || true
+            '''
+        }
+        always {
+            echo "Build #${BUILD_NUMBER} completed"
         }
     }
 }

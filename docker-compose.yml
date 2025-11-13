@@ -1,10 +1,29 @@
-version: "3.9"
+version: '3.8'
 
 services:
+  # Jenkins CI/CD Server
+  jenkins:
+    image: jenkins/jenkins:lts-jdk17
+    container_name: jenkins-ci
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
+    networks:
+      - ci-network
+    restart: unless-stopped
+
+  # Express Demo Application
   app:
-    build: .
-    image: express-ci-demo:latest
-    container_name: express-ci-demo
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: express-demo-app
     ports:
       - "3000:3000"
     environment:
@@ -16,4 +35,13 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+    networks:
+      - ci-network
     restart: unless-stopped
+
+networks:
+  ci-network:
+    driver: bridge
+
+volumes:
+  jenkins_home:

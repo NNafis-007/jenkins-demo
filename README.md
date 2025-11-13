@@ -1,122 +1,161 @@
 # Jenkins CI/CD Pipeline Demo
 
-Simple CI/CD pipeline demo with Jenkins running in Docker.
+Complete CI/CD pipeline with Jenkins and Express.js demo application.
+
+## Repository Structure
+
+```
+jenkins-demo/
+├── app/                      # Demo application source code
+│   ├── app.js               # Express application
+│   ├── package.json         # Node.js dependencies
+│   ├── Dockerfile           # App container definition
+│   └── tests/
+│       └── app.test.js      # Unit tests
+├── Jenkinsfile              # Declarative pipeline
+├── docker-compose.yml       # Both Jenkins & App services
+├── healthcheck.sh           # Health verification script
+└── README.md               # This file
+```
 
 ## Quick Start
 
-### 1. Start Jenkins
-```powershell
-cd jenkins
-docker compose -f docker-compose.jenkins.yml up -d
+### 1. Start Services (Jenkins + App)
+
+```bash
+docker-compose up -d
 ```
 
-Wait 30 seconds for Jenkins to start, then open http://localhost:8080
+This starts:
+- Jenkins on http://localhost:8080
+- Demo app on http://localhost:3000
 
-**No password needed** - Setup wizard is disabled, Jenkins opens directly.
+### 2. Install Docker & Node.js in Jenkins
 
-### 2. Install Node.js in Jenkins Container
-```powershell
-docker exec jenkins-ci bash -c "curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs"
+```bash
+# Install Docker CLI
+docker exec -u root jenkins-ci bash -c "apt-get update && apt-get install -y docker.io curl"
+
+# Install Node.js 18
+docker exec -u root jenkins-ci bash -c "curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs"
+
+# Verify
+docker exec jenkins-ci node --version
+docker exec jenkins-ci npm --version
+docker exec jenkins-ci docker --version
 ```
 
 ### 3. Copy Project Files to Jenkins
-```powershell
-cd ..  # Go back to jenkins-demo folder
-docker exec jenkins-ci mkdir -p /var/jenkins_home/workspace/express-ci-demo
-docker cp app.js jenkins-ci:/var/jenkins_home/workspace/express-ci-demo/
-docker cp package.json jenkins-ci:/var/jenkins_home/workspace/express-ci-demo/
-docker cp tests jenkins-ci:/var/jenkins_home/workspace/express-ci-demo/
+
+```bash
+docker cp . jenkins-ci:/var/jenkins_home/workspace/express-ci-demo/
 ```
 
-### 4. Create Pipeline Job in Jenkins
+### 4. Create Pipeline in Jenkins
+
 1. Open http://localhost:8080
-2. Click **New Item** (or **Create a job**)
+2. Click **New Item**
 3. Name: `express-ci-demo`
 4. Type: **Pipeline**
-5. Click **OK**
-6. Scroll down to **Pipeline** section
-7. Definition: Select **Pipeline script**
-8. Copy the entire content from `Jenkinsfile` and paste it
-9. Click **Save**
+5. Pipeline Definition: **Pipeline script from SCM**
+   - SCM: **Git** (or use Pipeline script directly)
+   - Repository URL: (your repo) or paste Jenkinsfile content
+   - Script Path: `Jenkinsfile`
+6. Click **Save**
 
-### 5. Run Pipeline
+### 5. Run the Pipeline
+
 1. Click **Build Now**
-2. Click on the build number (e.g., #1) in Build History
-3. Click **Console Output** to watch the pipeline run
-
-You'll see all stages execute:
-- ✅ Checkout
-- ✅ Install Dependencies
-- ✅ Unit Tests
-- ✅ Build Application
-- ✅ Deploy
-- ✅ Health Check
-- ✅ Display Status
-
-### 6. View Application
-The app runs inside Jenkins container. To test it:
-
-```powershell
-# From inside Jenkins container
-docker exec jenkins-ci curl http://localhost:3000
-docker exec jenkins-ci curl http://localhost:3000/health
-```
-
-You should see:
-- Main endpoint: "Hello World from CI/CD demo!"
-- Health endpoint: `{"status":"ok"}`
-
-## View Pipeline Output
-
-After running the pipeline, you can:
-
-1. **Console Output** - Click build #1 → Console Output
-   - See detailed logs of each stage
-   - See test results
-   - See deployment confirmation
-
-2. **Blue Ocean** (Better Visualization)
-   - Click "Open Blue Ocean" in sidebar
-   - See visual pipeline with all stages
-   - Green checkmarks for success
+2. View **Console Output** to see all stages
 
 ## Pipeline Stages
 
-1. **Checkout** - Verify workspace
-2. **Install Dependencies** - Run `npm install`
-3. **Unit Tests** - Run `npm test` (2 tests pass)
-4. **Build Application** - Prepare app
-5. **Deploy** - Start the app on port 3000
-6. **Health Check** - Verify `/health` endpoint
-7. **Display Status** - Show deployment info
+The Jenkinsfile defines 5 stages:
+
+1. **Build** - Install npm dependencies
+2. **Test** - Run unit tests with Jest
+3. **Package** - Build Docker image
+4. **Deploy** - Run container from image
+5. **Health-Check** - Verify app is healthy
+
+## Expected Console Output
+
+```
+========== BUILD STAGE ==========
+Installing dependencies...
+✓ Build completed successfully
+
+========== TEST STAGE ==========
+Running unit tests...
+✓ All tests passed
+
+========== PACKAGE STAGE ==========
+Building Docker image...
+✓ Docker image built successfully
+
+========== DEPLOY STAGE ==========
+Deploying new container...
+✓ Application deployed successfully
+
+========== HEALTH-CHECK STAGE ==========
+✓ Health check PASSED
+Health Response: {"status":"ok"}
+Main Endpoint: Hello World from CI/CD demo!
+
+═══════════════════════════════════════
+✓✓✓ PIPELINE SUCCESS ✓✓✓
+═══════════════════════════════════════
+All stages completed successfully!
+
+Application Details:
+- Name: express-demo-app
+- URL: http://localhost:3000
+- Health: http://localhost:3000/health
+- Status: HEALTHY ✓
+═══════════════════════════════════════
+```
+
+## Verify Application
+
+```bash
+# Test main endpoint
+curl http://localhost:3000
+
+# Test health endpoint
+curl http://localhost:3000/health
+
+# Run health check script
+bash healthcheck.sh
+```
 
 ## Cleanup
 
-```powershell
-# Stop Jenkins
-cd jenkins
-docker compose -f docker-compose.jenkins.yml down
+```bash
+# Stop all services
+docker-compose down
 
-# Remove all data
-docker compose -f docker-compose.jenkins.yml down -v
+# Remove volumes (deletes Jenkins data)
+docker-compose down -v
+
+# Remove built images
+docker rmi express-demo-app:latest
 ```
 
 ## Troubleshooting
 
-**Jenkins not accessible:**
-```powershell
-docker logs jenkins-ci
-# Wait until you see "Jenkins is fully up and running"
+**Jenkins permissions error:**
+```bash
+docker exec -u root jenkins-ci chmod 666 /var/run/docker.sock
 ```
 
-**Pipeline fails at tests:**
-```powershell
-# Verify Node.js is installed
-docker exec jenkins-ci node --version
-docker exec jenkins-ci npm --version
-```
+**Pipeline fails at build:**
+- Ensure Node.js is installed in Jenkins container
+- Verify files are copied to workspace
 
-**See app logs:**
-```powershell
-docker exec jenkins-ci cat /var/jenkins_home/workspace/express-ci-demo/app.log
-```
+**Pipeline fails at package:**
+- Ensure Docker is installed in Jenkins container
+- Check Docker socket permissions
+
+**Health check fails:**
+- Check container logs: `docker logs express-demo-app`
+- Verify app is running: `docker ps | grep express-demo-app`
