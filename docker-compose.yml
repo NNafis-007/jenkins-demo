@@ -1,0 +1,19 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: express-ci-demo:latest
+    container_name: express-ci-demo
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
