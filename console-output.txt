@@ -1,0 +1,151 @@
+Started by user unknown or anonymous
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/jenkins_home/workspace/express-ci-demo
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] echo
+=== Stage: Checkout ===
+[Pipeline] sh
++ pwd
+/var/jenkins_home/workspace/express-ci-demo
++ ls -la
+total 20
+drwxr-xr-x 3 root root 4096 Nov 13 17:22 .
+drwxr-xr-x 4 root root 4096 Nov 13 17:23 ..
+-rwxr-xr-x 1 root root  494 Nov 13 16:42 app.js
+-rwxr-xr-x 1 root root  289 Nov 13 16:42 package.json
+drwxr-xr-x 2 root root 4096 Nov 13 16:30 tests
+[Pipeline] echo
+Source code verified
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Install Dependencies)
+[Pipeline] echo
+=== Stage: Install Dependencies ===
+[Pipeline] sh
++ echo Installing npm dependencies...
+Installing npm dependencies...
++ npm install
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+
+added 355 packages, and audited 356 packages in 34s
+
+49 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
++ echo Dependencies installed successfully
+Dependencies installed successfully
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Unit Tests)
+[Pipeline] echo
+=== Stage: Unit Tests ===
+[Pipeline] sh
++ echo Running unit tests...
+Running unit tests...
++ npm test
+
+> express-ci-demo@1.0.0 test
+> jest
+
+PASS tests/app.test.js
+  Express app
+    ✓ GET / returns Hello World (40 ms)
+    ✓ GET /health returns status ok (5 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       2 passed, 2 total
+Snapshots:   0 total
+Time:        0.906 s
+Ran all test suites.
++ echo All tests passed successfully!
+All tests passed successfully!
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build Application)
+[Pipeline] echo
+=== Stage: Build Application ===
+[Pipeline] sh
++ echo Application is ready for deployment
+Application is ready for deployment
++ echo Build completed successfully
+Build completed successfully
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Deploy)
+[Pipeline] echo
+=== Stage: Deploy ===
+[Pipeline] sh
++ echo Starting application...
+Starting application...
++ pkill -f node app.js
++ true
++ echo 1977
++ sleep 3
++ nohup npm start
++ echo Application deployed
+Application deployed
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Health Check)
+[Pipeline] echo
+=== Stage: Health Check ===
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ curl -sf http://localhost:3000/health
+{"status":"ok"}
+[Pipeline] echo
+✓ Health check passed!
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Display Status)
+[Pipeline] echo
+=== Application Status ===
+[Pipeline] sh
++ echo =====================================
+=====================================
++ echo DEPLOYMENT SUCCESS
+DEPLOYMENT SUCCESS
++ echo =====================================
+=====================================
++ echo Application: express-ci-demo
+Application: express-ci-demo
++ echo Port: 3000
+Port: 3000
++ echo URL: http://localhost:3000
+URL: http://localhost:3000
++ echo Health: http://localhost:3000/health
+Health: http://localhost:3000/health
++ echo =====================================
+=====================================
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] echo
+=== PIPELINE SUCCESS ===
+[Pipeline] echo
+Application running at: http://localhost:3000
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+Finished: SUCCESS

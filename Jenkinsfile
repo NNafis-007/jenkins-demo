@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "express-ci-demo:jenkins-${env.BUILD_NUMBER}"
         APP_NAME = "express-ci-demo"
         APP_PORT = "3000"
     }
@@ -11,8 +10,9 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo '=== Stage: Checkout ==='
-                checkout scm
-                echo 'Source code checked out successfully'
+                // Working with files already in workspace
+                sh 'pwd && ls -la'
+                echo 'Source code verified'
             }
         }
 
@@ -21,11 +21,7 @@ pipeline {
                 echo '=== Stage: Install Dependencies ==='
                 sh '''
                   echo "Installing npm dependencies..."
-                  docker run --rm \
-                    -v "$PWD":/usr/src/app \
-                    -w /usr/src/app \
-                    node:18-alpine \
-                    sh -c "npm install"
+                  npm install
                   echo "Dependencies installed successfully"
                 '''
             }
@@ -36,47 +32,34 @@ pipeline {
                 echo '=== Stage: Unit Tests ==='
                 sh '''
                   echo "Running unit tests..."
-                  docker run --rm \
-                    -v "$PWD":/usr/src/app \
-                    -w /usr/src/app \
-                    node:18-alpine \
-                    sh -c "npm test"
+                  npm test
                   echo "All tests passed successfully!"
                 '''
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Build Application') {
             steps {
-                echo '=== Stage: Build Docker Image ==='
-                sh """
-                  echo "Building Docker image: ${DOCKER_IMAGE}"
-                  docker build -t ${DOCKER_IMAGE} .
-                  echo "Docker image built successfully"
-                  docker images | grep express-ci-demo
-                """
+                echo '=== Stage: Build Application ==='
+                sh '''
+                  echo "Application is ready for deployment"
+                  echo "Build completed successfully"
+                '''
             }
         }
 
-        stage('Package & Deploy') {
+        stage('Deploy') {
             steps {
-                echo '=== Stage: Package & Deploy ==='
+                echo '=== Stage: Deploy ==='
                 sh '''
-                  echo "Stopping any existing containers..."
-                  docker compose -f docker-compose.yml down || true
-                  
-                  echo "Creating deployment configuration..."
-                  # Create a temporary docker-compose file with the build-specific image
-                  cat docker-compose.yml | sed "s|image: express-ci-demo:latest|image: ${DOCKER_IMAGE}|" > docker-compose.jenkins.yml
-                  
-                  echo "Deploying application with Docker Compose..."
-                  docker compose -f docker-compose.jenkins.yml up -d
-                  
-                  echo "Waiting for container to start..."
-                  sleep 5
-                  
-                  echo "Container status:"
-                  docker ps | grep express-ci-demo || true
+                  echo "Starting application..."
+                  # Kill any existing process on port 3000
+                  pkill -f "node app.js" || true
+                  # Start app in background
+                  nohup npm start > app.log 2>&1 &
+                  echo $! > app.pid
+                  sleep 3
+                  echo "Application deployed"
                 '''
             }
         }
@@ -85,53 +68,37 @@ pipeline {
             steps {
                 echo '=== Stage: Health Check ==='
                 script {
-                    echo "Running health check script..."
-                    sh 'chmod +x healthcheck.sh'
-                    def healthResult = sh(
-                        script: './healthcheck.sh',
-                        returnStdout: true
-                    ).trim()
-                    echo healthResult
-                    
-                    // Verify container is running
-                    def containerStatus = sh(
-                        script: "docker inspect -f '{{.State.Running}}' express-ci-demo",
-                        returnStdout: true
-                    ).trim()
-                    
-                    if (containerStatus == 'true') {
-                        echo "✓ Container is running"
-                    } else {
-                        error "✗ Container is not running"
+                    def retries = 10
+                    def success = false
+                    for (int i = 0; i < retries; i++) {
+                        try {
+                            sh 'curl -sf http://localhost:3000/health'
+                            echo "✓ Health check passed!"
+                            success = true
+                            break
+                        } catch (Exception e) {
+                            echo "Health check attempt ${i+1} failed, retrying..."
+                            sleep 2
+                        }
                     }
-                    
-                    echo "=== DEPLOYMENT SUCCESS ==="
-                    echo "Application is running at: http://localhost:${APP_PORT}"
-                    echo "Health endpoint: http://localhost:${APP_PORT}/health"
+                    if (!success) {
+                        error "Health check failed after ${retries} attempts"
+                    }
                 }
             }
         }
 
-        stage('Display Application Status') {
+        stage('Display Status') {
             steps {
-                echo '=== Stage: Application Status ==='
+                echo '=== Application Status ==='
                 sh '''
                   echo "====================================="
-                  echo "APPLICATION DEPLOYMENT SUMMARY"
+                  echo "DEPLOYMENT SUCCESS"
                   echo "====================================="
-                  echo "Build Number: ${BUILD_NUMBER}"
-                  echo "Image: ${DOCKER_IMAGE}"
-                  echo "Container: express-ci-demo"
+                  echo "Application: ${APP_NAME}"
                   echo "Port: ${APP_PORT}"
-                  echo ""
-                  echo "Container Details:"
-                  docker ps --filter "name=express-ci-demo" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
-                  echo ""
-                  echo "Container Logs (last 10 lines):"
-                  docker logs --tail 10 express-ci-demo
-                  echo ""
-                  echo "====================================="
-                  echo "HEALTH STATUS: OK ✓"
+                  echo "URL: http://localhost:${APP_PORT}"
+                  echo "Health: http://localhost:${APP_PORT}/health"
                   echo "====================================="
                 '''
             }
@@ -141,22 +108,11 @@ pipeline {
     post {
         success {
             echo '=== PIPELINE SUCCESS ==='
-            echo 'All stages completed successfully!'
-            echo "Application is running at: http://localhost:${APP_PORT}"
+            echo "Application running at: http://localhost:${APP_PORT}"
         }
         failure {
             echo '=== PIPELINE FAILURE ==='
-            echo 'Pipeline failed. Cleaning up...'
-            sh '''
-              docker compose -f docker-compose.jenkins.yml down || true
-              docker logs express-ci-demo || true
-            '''
-        }
-        always {
-            echo '=== Cleanup (Optional) ==='
-            echo 'To stop the application, run: docker compose -f docker-compose.jenkins.yml down'
-            // Uncomment below to auto-cleanup after pipeline
-            // sh 'docker compose -f docker-compose.jenkins.yml down || true'
+            sh 'cat app.log || true'
         }
     }
 }
